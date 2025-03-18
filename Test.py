@@ -1,6 +1,5 @@
 import os
 import subprocess
-import json
 from typing import Dict, List, Optional
 
 class OpenSearchDependencyAnalyzer:
@@ -24,8 +23,8 @@ class OpenSearchDependencyAnalyzer:
             else:
                 print(f"Repository {repo_name} already exists, skipping clone.")
 
-    def run_gradle_dependencies(self, repo_path: str) -> Dict:
-        """Run Gradle dependencies task and parse the output."""
+    def run_gradle_dependencies(self, repo_path: str) -> str:
+        """Run Gradle dependencies task and return the output."""
         try:
             # Change to the repository directory
             original_dir = os.getcwd()
@@ -39,46 +38,17 @@ class OpenSearchDependencyAnalyzer:
                 check=True
             )
             
-            # Parse the output
-            dependencies = self._parse_gradle_output(result.stdout)
-            
             # Change back to original directory
             os.chdir(original_dir)
-            return dependencies
+            return result.stdout
             
         except subprocess.CalledProcessError as e:
             print(f"Error running Gradle in {repo_path}: {e}")
-            return {}
+            return ""
         finally:
             os.chdir(original_dir)
 
-    def _parse_gradle_output(self, output: str) -> Dict:
-        """Parse the Gradle dependencies output into a structured format."""
-        dependencies = {
-            "runtime": [],
-            "compile": []
-        }
-        
-        current_config = None
-        for line in output.split('\n'):
-            line = line.strip()
-            if not line:
-                continue
-                
-            if "runtimeClasspath" in line:
-                current_config = "runtime"
-            elif "compileClasspath" in line:
-                current_config = "compile"
-            elif current_config and line.startswith("---"):
-                # Skip separator lines
-                continue
-            elif current_config and line and not line.startswith("\\"):
-                # Add dependency line
-                dependencies[current_config].append(line)
-                
-        return dependencies
-
-    def analyze_all_repositories(self) -> Dict:
+    def analyze_all_repositories(self) -> Dict[str, str]:
         """Analyze dependencies for all repositories."""
         self.clone_repositories()
         
@@ -90,11 +60,15 @@ class OpenSearchDependencyAnalyzer:
             
         return results
 
-    def save_results(self, results: Dict, output_file: str = "dependencies.json") -> None:
-        """Save the dependency results to a JSON file."""
+    def save_results(self, results: Dict[str, str], output_file: str = "dependencies.txt") -> None:
+        """Save the dependency results to a text file in an indented format."""
         with open(output_file, 'w') as f:
-            json.dump(results, f, indent=2)
-        print(f"\nResults saved to {output_file}")
+            for repo_name, dependencies in results.items():
+                f.write(f"\n{'='*80}\n")
+                f.write(f"Repository: {repo_name}\n")
+                f.write(f"{'='*80}\n\n")
+                f.write(dependencies)
+                f.write("\n")
 
 def main():
     analyzer = OpenSearchDependencyAnalyzer()
