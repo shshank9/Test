@@ -48,15 +48,19 @@ def analyze_all_repositories(parent_dir: str, version: str) -> Dict[str, str]:
     
     return results
 
-def save_results(results: Dict[str, str], output_file: str = "dependencies.txt") -> None:
-    """Save the dependency results to a text file in an indented format."""
-    with open(output_file, 'w') as f:
-        for repo_name, dependencies in results.items():
-            f.write(f"\n{'='*80}\n")
+def save_results(results: Dict[str, str], output_dir: str = "dependencies") -> None:
+    """Save the dependency results to separate text files for each repository."""
+    # Create output directory if it doesn't exist
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    for repo_name, dependencies in results.items():
+        output_file = os.path.join(output_dir, f"{repo_name}_dependencies.txt")
+        with open(output_file, 'w') as f:
             f.write(f"Repository: {repo_name}\n")
             f.write(f"{'='*80}\n\n")
             f.write(dependencies)
-            f.write("\n")
+        print(f"Saved dependencies for {repo_name} to {output_file}")
 
 def main():
     # Example usage
