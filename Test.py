@@ -9,9 +9,14 @@ def run_gradle_dependencies(repo_path: str) -> str:
         original_dir = os.getcwd()
         os.chdir(repo_path)
         
+        # Prepare the command
+        cmd = ["./gradlew", "dependencies", "--configuration", "runtimeClasspath", "--configuration", "compileClasspath"]
+        print(f"\nExecuting command in {repo_path}:")
+        print(" ".join(cmd))
+        
         # Run Gradle dependencies task
         result = subprocess.run(
-            ["./gradlew", "dependencies", "--configuration", "runtimeClasspath", "--configuration", "compileClasspath"],
+            cmd,
             capture_output=True,
             text=True,
             check=True
@@ -22,7 +27,17 @@ def run_gradle_dependencies(repo_path: str) -> str:
         return result.stdout
         
     except subprocess.CalledProcessError as e:
-        print(f"Error running Gradle in {repo_path}: {e}")
+        print(f"\nError running Gradle in {repo_path}:")
+        print(f"Command failed with exit code: {e.returncode}")
+        print("\nCommand output:")
+        print(e.stdout)
+        print("\nError output:")
+        print(e.stderr)
+        return ""
+    except Exception as e:
+        print(f"\nUnexpected error in {repo_path}:")
+        print(f"Error type: {type(e).__name__}")
+        print(f"Error message: {str(e)}")
         return ""
     finally:
         os.chdir(original_dir)
