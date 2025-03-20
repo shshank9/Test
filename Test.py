@@ -84,18 +84,29 @@ def clone_plugin(repo_name: str, version: str = "2.18.0.0") -> str:
         return repo_dir
         
     print(f"Cloning {repo_name} plugin version {version}...")
-    subprocess.run(["git", "clone", repo_url, repo_dir], check=True)
-    
-    # Checkout specific version
-    os.chdir(repo_dir)
-    subprocess.run(["git", "checkout", version], check=True)
-    os.chdir("..")
-    return repo_dir
+    try:
+        subprocess.run(["git", "clone", repo_url, repo_dir], check=True)
+        
+        # Checkout specific version
+        os.chdir(repo_dir)
+        subprocess.run(["git", "checkout", version], check=True)
+        os.chdir("..")
+        
+        return repo_dir
+    except subprocess.CalledProcessError as e:
+        print(f"Error cloning {repo_name}: {str(e)}")
+        if os.path.exists(repo_dir):
+            print(f"Cleaning up failed clone of {repo_name}...")
+            subprocess.run(["rm", "-rf", repo_dir])
+        raise
 
 def get_runtime_dependencies(repo_path: str, repo_name: str) -> str:
     """Get compile-time dependencies for the project."""
     try:
+        print(f"\nStarting dependency analysis for {repo_name}...")
         original_dir = os.getcwd()
+        print(f"Current directory: {original_dir}")
+        print(f"Changing to: {repo_path}")
         os.chdir(repo_path)
         
         all_output = []
@@ -103,24 +114,69 @@ def get_runtime_dependencies(repo_path: str, repo_name: str) -> str:
         # Project-specific configurations
         project_configs = {
             "alerting": {
-                "use_project_prefix": True,  # Use :alerting:dependencies
+                "use_project_prefix": True,
                 "project_name": "alerting"
             },
             "observability": {
-                "use_project_prefix": False,  # Use just dependencies
+                "use_project_prefix": False,
                 "project_name": "opensearch-observability"
             },
             "reporting": {
-                "use_project_prefix": False,  # Use just dependencies
+                "use_project_prefix": False,
                 "project_name": "opensearch-reports-scheduler"
+            },
+            "asynchronous-search": {
+                "use_project_prefix": False,
+                "project_name": "opensearch-asynchronous-search"
+            },
+            "ml-commons": {
+                "use_project_prefix": False,
+                "project_name": "opensearch-ml"
+            },
+            "security": {
+                "use_project_prefix": False,
+                "project_name": "opensearch-security"
+            },
+            "k-NN": {
+                "use_project_prefix": False,
+                "project_name": "opensearch-knn"
+            },
+            "job-scheduler": {
+                "use_project_prefix": False,
+                "project_name": "opensearch-job-scheduler"
+            },
+            "sql": {
+                "use_project_prefix": False,
+                "project_name": "opensearch-sql"
+            },
+            "neural-search": {
+                "use_project_prefix": False,
+                "project_name": "opensearch-neural-search"
+            },
+            "index-management": {
+                "use_project_prefix": False,
+                "project_name": "opensearch-index-management"
+            },
+            "skills": {
+                "use_project_prefix": False,
+                "project_name": "opensearch-skills"
+            },
+            "anomaly-detection": {
+                "use_project_prefix": False,
+                "project_name": "opensearch-anomaly-detection"
+            },
+            "security-analytics": {
+                "use_project_prefix": False,
+                "project_name": "opensearch-security-analytics"
             }
         }
         
         # Get project config
         config = project_configs.get(repo_name, {
             "use_project_prefix": False,
-            "project_name": repo_name
+            "project_name": f"opensearch-{repo_name}"
         })
+        print(f"Using project config: {config}")
         
         # Build the command based on project config
         if config["use_project_prefix"]:
@@ -132,12 +188,14 @@ def get_runtime_dependencies(repo_path: str, repo_name: str) -> str:
         print(" ".join(cmd))
         
         try:
+            print("Running Gradle command...")
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 check=True
             )
+            print("Gradle command completed successfully")
             
             all_output.append(f"\nCommand: {' '.join(cmd)}")
             all_output.append("=" * 80)
@@ -148,6 +206,7 @@ def get_runtime_dependencies(repo_path: str, repo_name: str) -> str:
             print("Error output:")
             print(e.stderr)
         
+        print("Changing back to original directory")
         os.chdir(original_dir)
         return "\n".join(all_output)
         
@@ -157,6 +216,7 @@ def get_runtime_dependencies(repo_path: str, repo_name: str) -> str:
         print(f"Error message: {str(e)}")
         return ""
     finally:
+        print("Ensuring we're back in the original directory")
         os.chdir(original_dir)
 
 def run_gradle_dependencies(repo_path: str) -> str:
@@ -205,8 +265,8 @@ def run_gradle_dependencies(repo_path: str) -> str:
 
 def analyze_repository(repo_path: str, repo_name: str) -> str:
     """Analyze dependencies for a single repository."""
-    print(f"\nAnalyzing dependencies for {repo_name}...")
-    return run_gradle_dependencies(repo_path)
+    print(f"\nAnalyzing {repo_name}...")
+    return get_runtime_dependencies(repo_path, repo_name)
 
 def analyze_all_repositories(parent_dir: str, version: str) -> Dict[str, str]:
     """Analyze dependencies for all repositories in the specified directory structure."""
@@ -238,7 +298,13 @@ def save_results(output: str, repo_name: str, output_dir: str = "dependencies") 
 
 def main():
     # List of plugins to analyze
-    plugins = ["alerting", "observability", "reporting"]
+    plugins = [
+        "alerting", "observability", "reporting",
+        "asynchronous-search", "ml-commons", "security",
+        "k-NN", "job-scheduler", "sql", "neural-search",
+        "index-management", "skills", "anomaly-detection",
+        "security-analytics"
+    ]
     version = "2.18.0.0"
     
     for plugin in plugins:
