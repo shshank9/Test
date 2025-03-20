@@ -1,31 +1,36 @@
-def parse_dependency_line(line: str) -> tuple[str, str]:
-    """Parse a dependency line to extract artifact and version.
-    Example: '+--- org.opensearch:opensearch:2.18.0.0' -> ('org.opensearch:opensearch', '2.18.0.0')"""
+def parse_dependency_line(line: str) -> tuple[str, str, int]:
+    """Parse a dependency line to extract artifact, version, and nesting level.
+    Example: '+--- org.opensearch:opensearch:2.18.0.0' -> ('org.opensearch:opensearch', '2.18.0.0', 0)
+             '|   +--- org.jetbrains:annotations:13.0' -> ('org.jetbrains:annotations', '13.0', 1)"""
     line = line.strip()
-    if not line.startswith('+---') and not line.startswith('|   +---'):
-        return None, None
+    nesting_level = 0
     
-    # Remove the prefix and whitespace
-    line = line.replace('+---', '').replace('|   +---', '').strip()
+    if line.startswith('|   +---'):
+        nesting_level = 1
+        line = line.replace('|   +---', '').strip()
+    elif line.startswith('+---'):
+        line = line.replace('+---', '').strip()
+    else:
+        return None, None, None
     
     # Split into artifact and version
     parts = line.split(':')
     if len(parts) < 3:
-        return None, None
+        return None, None, None
         
     artifact = ':'.join(parts[:-1])
     version = parts[-1]
     
-    return artifact, version
+    return artifact, version, nesting_level
 
-def read_dependencies(file_path: str) -> list[tuple[str, str]]:
-    """Read dependencies from a file and return list of (artifact, version) tuples."""
+def read_dependencies(file_path: str) -> list[tuple[str, str, int]]:
+    """Read dependencies from a file and return list of (artifact, version, nesting_level) tuples."""
     dependencies = []
     with open(file_path, 'r') as f:
         for line in f:
-            artifact, version = parse_dependency_line(line)
-            if artifact and version:
-                dependencies.append((artifact, version))
+            artifact, version, nesting_level = parse_dependency_line(line)
+            if artifact and version is not None:
+                dependencies.append((artifact, version, nesting_level))
     return dependencies
 
 def create_flat_map(dependencies: list[tuple[str, str]]) -> dict[str, str]:
@@ -42,14 +47,24 @@ def create_nested_map(dependencies: list[tuple[str, str]]) -> dict:
         nested[group][name] = version
     return nested
 
-def write_dependencies(dependencies: list[tuple[str, str]], output_file: str) -> None:
-    """Write dependencies to a file in Gradle's dependency output format."""
+def write_dependencies(dependencies: list[tuple[str, str, int]], output_file: str) -> None:
+    """Write dependencies back to a file in the original format."""
     with open(output_file, 'w') as f:
-        # Write dependencies with proper tree structure
-        for i, (artifact, version) in enumerate(dependencies):
-            # First dependency uses +---, others use |   +---
-            prefix = '|   +---' if i > 0 else '+---'
-            f.write(f"{prefix} {artifact}:{version}\n")
+        for i, (artifact, version, level) in enumerate(dependencies):
+            # Remove any (n) markers from version
+            version = version.replace(' (n)', '')
+            
+            # First dependency starts with +---, others with |   +---
+            prefix = "+--- " if i == 0 else "|   +--- "
+            
+            # Add proper indentation based on nesting level
+            indent = "    " * (level - 1) if level > 1 else ""
+            
+            # Add vertical lines for nested dependencies
+            if level > 1:
+                prefix = "|   " * (level - 2) + "|   +--- "
+            
+            f.write(f"{indent}{prefix}{artifact}:{version}\n")
 
 def extract_compile_classpath(content: str) -> str:
     """Extract compileClasspath section from dependencies output."""
@@ -68,7 +83,7 @@ def extract_compile_classpath(content: str) -> str:
     
     return '\n'.join(compile_classpath_lines)
 
-def process_dependencies_file(file_path: str) -> tuple[list[tuple[str, str]], dict[str, str], dict]:
+def process_dependencies_file(file_path: str) -> tuple[list[tuple[str, str, int]], dict[str, str], dict]:
     """Process a dependencies file and return dependencies in different formats."""
     with open(file_path, 'r') as f:
         content = f.read()
@@ -79,13 +94,21 @@ def process_dependencies_file(file_path: str) -> tuple[list[tuple[str, str]], di
     # Parse dependencies
     dependencies = []
     for line in compile_classpath.split('\n'):
-        artifact, version = parse_dependency_line(line)
-        if artifact and version:
-            dependencies.append((artifact, version))
+        artifact, version, nesting_level = parse_dependency_line(line)
+        if artifact and version is not None:
+            dependencies.append((artifact, version, nesting_level))
     
-    # Create maps
-    flat_map = create_flat_map(dependencies)
-    nested_map = create_nested_map(dependencies)
+    # Create maps (using only the first occurrence of each dependency)
+    flat_map = {}
+    nested_map = {}
+    
+    for artifact, version, _ in dependencies:
+        if artifact not in flat_map:
+            flat_map[artifact] = version
+            group, name = artifact.split(':', 1)
+            if group not in nested_map:
+                nested_map[group] = {}
+            nested_map[group][name] = version
     
     return dependencies, flat_map, nested_map
 
@@ -106,8 +129,8 @@ def test_dependency_processing():
     
     # Print results
     print("\nDependencies list:")
-    for artifact, version in deps:
-        print(f"{artifact}:{version}")
+    for artifact, version, nesting_level in deps:
+        print(f"{'  ' * nesting_level}{artifact}:{version}")
     
     print("\nFlat map:")
     for artifact, version in flat_map.items():
