@@ -1,89 +1,59 @@
-import json
 import re
 
 def parse_dependency_tree(lines):
-    """Parses the indented dependency tree into a nested dictionary."""
-    stack = []
-    root = {}
-    current = root
-    indent_map = {}
-
-    for line in lines:
-        match = re.match(r'([| ]*)([+\\\-]+) (.+)', line)
-        if not match:
-            continue
-
-        indent, _, dep = match.groups()
-        level = indent.count("|")
-        package, version = dep.rsplit(":", 1) if ":" in dep else (dep, "")
-        
-        node = {"version": version, "dependencies": {}, "original": line}
-
-        if level == 0:
-            root[package] = node
-            stack = [(package, node)]
-        else:
-            while len(stack) > level:
-                stack.pop()
-
-            parent_name, parent_node = stack[-1]
-            parent_node["dependencies"][package] = node
-            stack.append((package, node))
-
-    return root
-
-def flatten_dependencies(nested_map, parent=""):
-    """Flattens a nested dictionary into a key-value dictionary."""
+    """Parses the dependency tree into a nested dictionary and a flat dictionary."""
+    nested_map = {}
     flat_map = {}
 
-    def flatten_helper(subtree, path):
-        for key, value in subtree.items():
-            current_path = f"{path}/{key}" if path else key
-            flat_map[current_path] = value["version"]
-            flatten_helper(value["dependencies"], current_path)
+    stack = []  # Track indentation levels
+    parent = nested_map
 
-    flatten_helper(nested_map, parent)
-    return flat_map
+    for line in lines:
+        match = re.match(r"(\| +)?(\+---|\---) (.+)", line)
+        if match:
+            indent = len(match.group(1) or '')  # Count leading "|  " indentation
+            dependency = match.group(3).strip()
 
-def write_dependency_tree(nested_map):
-    """Writes the nested dependency map back exactly as the input format."""
-    output = []
+            # Maintain proper hierarchy based on indentation
+            while stack and stack[-1][0] >= indent:
+                stack.pop()
 
-    def write_helper(subtree):
-        for key, value in subtree.items():
-            output.append(value["original"])
-            write_helper(value["dependencies"])
+            if stack:
+                parent = stack[-1][1]  # Parent dictionary
 
-    write_helper(nested_map)
-    return "\n".join(output)
+            parent[dependency] = {}  # Add dependency
+            flat_map[dependency] = None  # Store in flat dictionary
+            stack.append((indent, parent[dependency]))  # Push current dependency
 
-# Sample input (replace this with reading from a file if needed)
-input_text = """
-+--- org.opensearch:opensearch:2.18.0
-|    +--- org.opensearch:opensearch-common:2.18.0
-|    +--- org.opensearch:opensearch-core:2.18.0
-|    |    +--- org.opensearch:opensearch-common:2.18.0
-|    |    +--- com.fasterxml.jackson.core:jackson-core:2.17.2
-"""
+    return nested_map, flat_map
 
-# Convert input text to lines
-lines = input_text.strip().split("\n")
+def write_dependency_tree(nested_map, indent=0):
+    """Writes back the dependency tree in the exact input format."""
+    output_lines = []
+    prefix = "|   " * indent + "+--- " if indent > 0 else "+--- "
 
-# Parse into nested dictionary
-nested_map = parse_dependency_tree(lines)
+    for key, sub_map in nested_map.items():
+        output_lines.append(prefix + key)
+        output_lines.extend(write_dependency_tree(sub_map, indent + 1))
 
-# Convert to flat map
-flat_map = flatten_dependencies(nested_map)
+    return output_lines
 
-# Convert back to original format
-output_text = write_dependency_tree(nested_map)
+def main():
+    input_filename = "input.txt"
+    output_filename = "output.txt"
 
-# Print results
-print("Nested Map (JSON format):")
-print(json.dumps(nested_map, indent=2))
+    # Read input from file
+    with open(input_filename, "r", encoding="utf-8") as file:
+        lines = file.readlines()
 
-print("\nFlat Map:")
-print(json.dumps(flat_map, indent=2))
+    # Process input
+    nested_map, flat_map = parse_dependency_tree(lines)
 
-print("\nReconstructed Output:")
-print(output_text)
+    # Write output back to file
+    with open(output_filename, "w", encoding="utf-8") as file:
+        file.write("\n".join(write_dependency_tree(nested_map)))
+
+    print("Processed successfully! Output written to", output_filename)
+
+if __name__ == "__main__":
+    main()
